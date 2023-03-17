@@ -15,15 +15,16 @@ class YouTubeHelper:
     
     Attributes:
         youtube (object): The YouTube API object.
+        whisper_model (object): The OpenAI Whisper model.
         
-    Public Functions:
-        search: Search for videos based on a query term and date range.
-        video_details: Get the details of a video.
-        download_audio: Download the audio of a list of videos.
-        transcribe_audio: Transcribe a list of audio files.
-        comments: Get the comments of a video.
-    
+    Public Methods:
+        search (YouTube API): Search for videos based on a query term and date range.
+        TODO: video_details (YouTube API): Get the details of a video.
+        download_audio (PyTube): Download the audio of a list of videos.
+        transcribe_audio (OpenAI Whisper): Transcribe a list of audio files.
+        comments (YouTube API): Get the comments of a video.
     """
+    
     def __init__(self, api_key, api_service_name="youtube", api_version="v3"):
         
         assert api_key is not None, "api_key must be provided"
@@ -35,8 +36,6 @@ class YouTubeHelper:
         )
         
         self.whisper_model = None
-        self._initialize_whisper_model()
-        
         
     #
     # Search Functions
@@ -61,6 +60,7 @@ class YouTubeHelper:
         Returns:
             A pandas DataFrame containing the search results.
         """
+        
         assert isinstance(query, str), "query must be a string"
         assert datetime.date.fromisoformat(start_date), "start_date must be of format YYYY-MM-DD"
         assert datetime.date.fromisoformat(end_date), "end_date must be of format YYYY-MM-DD"
@@ -137,6 +137,7 @@ class YouTubeHelper:
         Returns:
             A pandas DataFrame containing the video details.
         """
+        
         return self._videos(
             part="snippet,contentDetails,statistics",
             video_id=video_id,
@@ -173,8 +174,9 @@ class YouTubeHelper:
             save_path (str): The path to save the audio file to.
             
         Returns:
-            None
+            A list of the filenames of the downloaded audio files.
         """
+        
         assert video_ids is not None, "video_ids must be provided"
         assert isinstance(video_ids, list), "video_ids must be a list"
         assert isinstance(video_ids[0], str), "video_ids must be a list of strings"
@@ -194,27 +196,33 @@ class YouTubeHelper:
     
     
     def _initialize_whisper_model(self, model="base"):
-        assert model in ["tiny", "base", "small", "medium", "large"], \
-            "model must be one of: tiny (39M), base (74M), small (244M), medium (769M), large (1550M)"
-        
         self.whisper_model = OpenAIWhisper(model)
     
     
-    def transcribe_audio(self, filenames, path="content/audio"):
+    def transcribe_audio(self, filenames, path="content/audio", model=None):
         """Transcribe a list of audio files.
         
         Parameters:
             filenames (list): The list of filenames to transcribe.
             path (str): The path to the audio files.
+            model (str): The model to use for transcription.
         
         Returns:
             A list of strings containing the transcriptions.
         """
+        
         assert filenames is not None, "filenames must be provided"
         assert isinstance(filenames, list), "filenames must be a list"
         assert isinstance(filenames[0], str), "filenames must be a list of strings"
         assert isinstance(path, str), "path must be a string"
+        assert model in ["tiny", "base", "small", "medium", "large", None], \
+            "model must be one of: tiny (39M), base (74M), small (244M), medium (769M), large (1550M)"
         
+        if model is not None:
+            self._initialize_whisper_model(model=model)
+        elif self.whisper_model is None:
+            self._initialize_whisper_model(model="base")
+            
         transcripts = []
         for filename in filenames:
             assert os.path.exists(os.path.join(path, filename)), "File does not exist: " + filename + " in " + path
@@ -282,6 +290,7 @@ class YouTubeHelper:
         Returns:
             A pandas DataFrame containing the comments of the video.
         """
+        
         assert video_id is not None, "video_id must be provided"
         assert isinstance(video_id, str), "video_id must be a string"
         assert results_to_get in ["all", "top_100", "top_500"], \
@@ -310,8 +319,6 @@ class YouTubeHelper:
             next_page_token = threads.get("nextPageToken") if "nextPageToken" in threads else None
             comments_list += threads['items']
             
-            
-        
         comments_df = self._comment_threads_to_df(comments_list)
         
         return comments_df
