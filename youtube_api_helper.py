@@ -1,10 +1,11 @@
 import pandas as pd
+from pytube import YouTube as PyTube
 from googleapiclient.discovery import build
 from config import YOUTUBE_API_KEY
 
 
-class YouTubeAPI:
-    def __init__(self, api_service_name, api_version, api_key):
+class YouTubeHelper:
+    def __init__(self, api_key, api_service_name="youtube", api_version="v3"):
         
         assert api_key is not None, "api_key must be provided"
         
@@ -107,7 +108,52 @@ class YouTubeAPI:
             part="snippet,contentDetails,statistics",
             **kwargs,
         ).execute()
-
+    
+    
+    def _download_audio_from_id(self, video_id, save_path=None, filename=None):
+        video_object = PyTube("https://www.youtube.com/watch?v=" + video_id)
+            
+        streams = video_object.streams.filter(only_audio=True, file_extension="mp4")
+        
+        if streams.get_by_itag(140).exists(): # itag 140 -> 128kbps
+            stream = streams.get_by_itag(140)
+        elif streams.get_by_itag(139).exists(): # itag 139 -> 48kbps
+            stream = streams.get_by_itag(139)
+        else:
+            stream = None
+            raise Exception("No audio stream found")
+        
+        return stream.download(
+            output_path=save_path,
+            filename=filename,
+        )
+        
+    
+    def download_audio(self, video_ids, save_path=None):
+        """
+        Download the audio of a video or list of videos.
+        API Cost: 0 Credits
+        Documentation: https://python-pytube.readthedocs.io/en/latest/user/quickstart.html
+        
+        Parameters:
+            video_ids (str or list): The video ID or list of video IDs to download.
+            save_path (str): The path to save the audio file to.
+            
+        Returns:
+            None
+        """
+        assert video_ids is not None, "video_ids must be provided"
+        assert isinstance(video_ids, str) or isinstance(video_ids, list), "video_ids must be a string or list"
+        
+        if isinstance(video_ids, list):
+            filenames = []
+            for video_id in video_ids:
+                filenames.append(self._download_audio_from_id(video_id, save_path, video_id+".mp4"))
+            return filenames
+        else:
+            filename = self._download_audio_from_id(video_id, save_path, video_id+".mp4")
+            return filename
+    
 
     #
     # Comment Functions
