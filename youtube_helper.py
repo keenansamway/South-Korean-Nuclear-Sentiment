@@ -1,7 +1,13 @@
+import os
+import datetime
 import pandas as pd
+
+import whisper as OpenAIWhisper
 from pytube import YouTube as PyTube
 from googleapiclient.discovery import build
+
 from config import YOUTUBE_API_KEY
+
 
 
 class YouTubeHelper:
@@ -9,6 +15,13 @@ class YouTubeHelper:
     
     Attributes:
         youtube (object): The YouTube API object.
+        
+    Public Functions:
+        search: Search for videos based on a query term and date range.
+        video_details: Get the details of a video.
+        download_audio: Download the audio of a list of videos.
+        transcribe_audio: Transcribe a list of audio files.
+        comments: Get the comments of a video.
     
     """
     def __init__(self, api_key, api_service_name="youtube", api_version="v3"):
@@ -18,8 +31,11 @@ class YouTubeHelper:
         self.youtube = build(
             serviceName=api_service_name,
             version=api_version,
-            developerKey=self.api_key
+            developerKey=api_key
         )
+        
+        self.whisper_model = None
+        self._initialize_whisper_model()
         
         
     #
@@ -30,14 +46,13 @@ class YouTubeHelper:
         return self.youtube.search().list(**kwargs).execute()
     
 
-    def get_search_results(self, query, start_date, end_date, results_to_get=50):
-        """Search for videos based on a query term.
+    def search(self, query, start_date, end_date, order_by="relevance", results_to_get=50):
+        """Search for videos based on a query term and date range.
         
         API Cost: 100 credits for 50 search results
         Documentation: https://developers.google.com/youtube/v3/docs/search/list
         
         Parameters:
-            youtube (object): The YouTube API object.
             query (str): The search query term.
             start_date (str): The start date for the search query.
             end_date (str): The end date for the search query.
@@ -46,6 +61,13 @@ class YouTubeHelper:
         Returns:
             A pandas DataFrame containing the search results.
         """
+        assert isinstance(query, str), "query must be a string"
+        assert datetime.date.fromisoformat(start_date), "start_date must be of format YYYY-MM-DD"
+        assert datetime.date.fromisoformat(end_date), "end_date must be of format YYYY-MM-DD"
+        assert order_by in ["date", "rating", "relevance", "title", "videoCount", "viewCount"], \
+            "order_by must be one of: date, rating, relevance, title, videoCount, viewCount"
+        assert 0 < results_to_get <= 50, "results_to_get must be between 1 and 50 (inclusive)"
+        
         nextPageToken = None
         first_page = True    
         
@@ -68,7 +90,7 @@ class YouTubeHelper:
                     q=query,
                     pageToken=None,
                     type="video",
-                    order="viewCount", # date, rating, relevance (default), title, videoCount, viewCount
+                    order=order_by, # date, rating, relevance (default), title, videoCount, viewCount
                     publishedAfter=start_date + "T00:00:00Z",
                     publishedBefore=end_date + "T00:00:00Z",
                     maxResults=to_get,
@@ -83,39 +105,41 @@ class YouTubeHelper:
             items = response.get("items")
             
             df = pd.DataFrame()
-            df['video_ids'] = [item["id"]["videoId"] for item in items]
-            df['video_titles'] = [item["snippet"]["title"] for item in items]
-            df['channel_ids'] = [item["snippet"]["channelId"] for item in items]
-            df['channel_titles'] = [item["snippet"]["channelTitle"] for item in items]
+            df['video_id'] = [item["id"]["videoId"] for item in items]
+            df['video_title'] = [item["snippet"]["title"] for item in items]
+            df['channel_id'] = [item["snippet"]["channelId"] for item in items]
+            df['channel_title'] = [item["snippet"]["channelTitle"] for item in items]
             df['published_time'] = [item["snippet"]["publishedAt"] for item in items]
         
             search_df = pd.concat([search_df, df], ignore_index=True)
         
         return search_df
 
+
     #
     # Video Functions
     #
 
     def _videos(self, **kwargs):
+        return self.youtube.videos().list(**kwargs).execute()
+        
+    
+    # TODO: Implement function to get video details
+    def video_details(self, video_id):
         """Get the details of a video.
         
         API Cost: 1 Credit Per Request/Video
         Documentation: https://developers.google.com/youtube/v3/docs/videos/list
         
         Parameters:
-            youtube (object): The YouTube API object.
-            **kwargs: The keyword arguments to pass to the videos method.
+            video_id (str): The ID of the video to get details for.
             
         Returns:
-            A list of videos matching the search query.
+            A pandas DataFrame containing the video details.
         """
-        return self.youtube.videos().list(**kwargs).execute()
-        
-    
-    def get_video_details(self):
         return self._videos(
             part="snippet,contentDetails,statistics",
+            video_id=video_id,
         )
     
     
@@ -153,6 +177,9 @@ class YouTubeHelper:
         """
         assert video_ids is not None, "video_ids must be provided"
         assert isinstance(video_ids, list), "video_ids must be a list"
+        assert isinstance(video_ids[0], str), "video_ids must be a list of strings"
+        assert save_path is not None, "save_path must be provided"
+        assert isinstance(save_path, str), "save_path must be a string"
         
         filenames = []
         for video_id in video_ids:
@@ -165,6 +192,37 @@ class YouTubeHelper:
             
         return filenames
     
+    
+    def _initialize_whisper_model(self, model="base"):
+        assert model in ["tiny", "base", "small", "medium", "large"], \
+            "model must be one of: tiny (39M), base (74M), small (244M), medium (769M), large (1550M)"
+        
+        self.whisper_model = OpenAIWhisper(model)
+    
+    
+    def transcribe_audio(self, filenames, path="content/audio"):
+        """Transcribe a list of audio files.
+        
+        Parameters:
+            filenames (list): The list of filenames to transcribe.
+            path (str): The path to the audio files.
+        
+        Returns:
+            A list of strings containing the transcriptions.
+        """
+        assert filenames is not None, "filenames must be provided"
+        assert isinstance(filenames, list), "filenames must be a list"
+        assert isinstance(filenames[0], str), "filenames must be a list of strings"
+        assert isinstance(path, str), "path must be a string"
+        
+        transcripts = []
+        for filename in filenames:
+            assert os.path.exists(os.path.join(path, filename)), "File does not exist: " + filename + " in " + path
+            output = self.whisper_model.transcribe(os.path.join(path, filename))
+            transcripts.append(output["text"])
+        
+        return transcripts
+        
 
     #
     # Comment Functions
@@ -185,67 +243,64 @@ class YouTubeHelper:
 
         flattened_df = flattened_df.rename(
             columns={
-                "snippet.videoId" : "videoId",
-                "snippet.textOriginal" : "textOriginal",
-                "snippet.authorDisplayName" : "authorDisplayName",
-                "snippet.authorChannelId.value" : "authorChannelId",
-                "snippet.likeCount" : "likeCount",
-                "snippet.publishedAt" : "publishedAt",
-                "snippet.updatedAt" : "updatedAt",
-                "snippet.parentId" : "parentId",
+                "snippet.videoId" : "video_id",
+                "snippet.textOriginal" : "text_original",
+                "snippet.authorDisplayName" : "author_display_name",
+                "snippet.authorChannelId.value" : "author_channel_id",
+                "snippet.likeCount" : "like_count",
+                "snippet.publishedAt" : "published_at",
+                "snippet.updatedAt" : "updated_at",
+                "snippet.parentId" : "parent_id",
             }
         )
 
         flattened_df = flattened_df[
             ["id",
-            "videoId",
-            "textOriginal",
-            "authorDisplayName",
-            "authorChannelId",
-            "likeCount",
-            "publishedAt",
-            "updatedAt",
-            "parentId"]
+            "video_id",
+            "text_original",
+            "author_display_name",
+            "author_channel_id",
+            "like_count",
+            "published_at",
+            "updated_at",
+            "parent_id"]
         ]
         
         return flattened_df
 
 
-    def get_video_comments(self, youtube, videoId, top_level_only=False, max_results=100):
+    def comments(self, video_id, results_to_get="all"):
         """Gets the comments of a video.
         
         API Cost: 1 credit for 100 comment threads (top-level comments plus any replies).
         Documentation: https://developers.google.com/youtube/v3/docs/commentThreads/list
         
         Parameters:
-            youtube (object): The YouTube API object.
-            videoId (str): The ID of the video to get the comments of.
-            top_level_only (bool): Whether to get the replies of the comment threads or just the top-level comments.
-            max_results (int): The maximum number of comments to return (1-100).
-            
+            video_id (str): The ID of the video to get the comments of.
+            results_to_get (str): The number of results to get. Must be one of "all", "top_100", or "top_500".
+                        
         Returns:
             A pandas DataFrame containing the comments of the video.
         """
-        assert max_results <= 100, "max_results must be less than or equal to 100"
-        
+        assert video_id is not None, "video_id must be provided"
+        assert isinstance(video_id, str), "video_id must be a string"
+        assert results_to_get in ["all", "top_100", "top_500"], \
+            "results_to_get must be one of 'all', 'top_100', or 'top_500'"
+
         next_page_token = None
         first_page = True
         
         comments_list = []
         while (next_page_token is not None) or (first_page is True):
             first_page = False
-
-            part = "snippet"
-            part += ",replies" if not top_level_only else ""
             
             try: 
                 threads = self._comment_threads(
-                    part=part,
-                    videoId=videoId,
-                    top_level_only=top_level_only,
+                    part="snippet, replies",
+                    videoId=video_id,
                     pageToken=next_page_token,
                     order="time", # time, relevance (sorting by relevance uses an algorithm which can filter out some comments)
-                    maxResults=max_results,
+                    maxResults=100,
                 )
 
             except Exception as e:
@@ -254,15 +309,13 @@ class YouTubeHelper:
             
             next_page_token = threads.get("nextPageToken") if "nextPageToken" in threads else None
             comments_list += threads['items']
+            
+            
         
         comments_df = self._comment_threads_to_df(comments_list)
         
         return comments_df
 
 
-
 if __name__ == "__main__":
     print("Youtube API Helper")
-    
-    API_SERVICE_NAME = "youtube"
-    API_VERSION = "v3"
