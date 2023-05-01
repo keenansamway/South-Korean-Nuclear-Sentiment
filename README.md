@@ -33,3 +33,28 @@
 
 - Is there a way to detect whether comments are relevant to the topics in the video?
     - Potentially discard comments which are not related to the video topic
+
+
+### Key Terms
+- 핵무기 - nuclear weapon
+- 전술핵무기 - tactical nuclear weapon
+- 핵확산 - nuclear proliferation
+- 핵개발 - nuclear development
+- 핵무장 - nuclear armament
+- 핵무장론 - theory of nuclear armament
+- 독자 핵무장 - independent nuclear armament
+- 한국 핵무장 - korean nuclear armament
+- 핵우산 - nuclear umbrella
+- 핵 잠재력 - nuclear potential
+- 핵 보유, 핵 보유국, 핵무기 보유국 - a nuclear power, a nuclear weapons state
+- 핵확산방지조약, NPT - Nuclear Non-Proliferation Treaty
+- NPT 탈퇴 - withdrawal from NPT
+
+- 한미동맹 - US-ROK Alliance
+- 한미상호방위조약 - US-ROK Mutual Defense Treaty
+
+- 한국, 대한민국 - South Korea, Republic of Korea
+- 미국 - USA
+
+- 더불어민주당 - Democratic Party (Liberal)
+- 국민의힘 - People Power Party (Conservative)
