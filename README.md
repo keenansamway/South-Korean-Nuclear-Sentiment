@@ -58,3 +58,10 @@
 
 - 더불어민주당 - Democratic Party (Liberal)
 - 국민의힘 - People Power Party (Conservative)
+
+
+## TODO
+
+- Look further into topics 0, 1, 2 for further analysis
+- Topic model the video titles and/or descriptions
+- Compare video topics with their comment topics
