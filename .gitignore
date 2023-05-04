@@ -2,3 +2,4 @@
 .env
 content/
 __pycache__/
+models/
